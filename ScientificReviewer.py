@@ -61,47 +61,47 @@ def analyze_poster(text_content, agent):
     Please review the research poster thoroughly and provide the following:
  
     1. Summary:
-	•	Start with a concise summary of the poster’s overall strengths and weaknesses.
-	•	Highlight key areas where the poster excels and areas that need significant improvement.
+	Start with a concise summary of the poster’s overall strengths and weaknesses.
+	Highlight key areas where the poster excels and areas that need significant improvement.
  
     2. Scoring Criteria:
-	•	Provide an overall score for the poster as well as a breakdown of scores for each section. Use a 1-9 scale, where:
-	•	1 is extremely poor,
-	•	5 is satisfactory, and
-	•	9 is flawless.
-	•	Distribute the scores according to a normal distribution, with 5 being the center point.
+	Provide an overall score for the poster as well as a breakdown of scores for each section. Use a 1-9 scale, where:
+	1 is extremely poor,
+	5 is satisfactory, and
+	9 is flawless.
+	Distribute the scores according to a normal distribution, with 5 being the center point.
  
     3. Detailed Evaluation:
     For each section, provide specific feedback and suggestions for improvement, including:
  
     	1.	Introduction:
-    	•	Does the problem statement clearly define the research question?
-    	•	Are the basic concepts and past work relevant and explained sufficiently for the intended audience?
-    	•	Suggestions: Recommend adding clarity, adjusting scope, or incorporating more citations if needed.
+    		Does the problem statement clearly define the research question?
+    		Are the basic concepts and past work relevant and explained sufficiently for the intended audience?
+    		Suggestions: Recommend adding clarity, adjusting scope, or incorporating more citations if needed.
     	2.	Methods:
-    	•	Is the approach well-structured, with a clear explanation of input data, experimental design, and validation methods?
-    	•	Suggestions: Point out if additional details, better flow, or improved descriptions of validation strategies would be helpful.
+    		Is the approach well-structured, with a clear explanation of input data, experimental design, and validation methods?
+    		Suggestions: Point out if additional details, better flow, or improved descriptions of validation strategies would be helpful.
     	3.	Results:
-    	•	Are the findings well-presented with clear, detailed tables and figures? Are captions informative, and is the logic between results and conclusions sound?
-    	•	Suggestions: Highlight if the visuals or narrative need refinement, or if the logic behind the conclusions requires strengthening.
+    		Are the findings well-presented with clear, detailed tables and figures? Are captions informative, and is the logic between results and conclusions sound?
+    		Suggestions: Highlight if the visuals or narrative need refinement, or if the logic behind the conclusions requires strengthening.
     	4.	Summary:
-    	•	Do the summary bullet points logically flow from the results without gaps in reasoning?
-    	•	Suggestions: Recommend ways to make the summary more concise or clarify conclusions based on the findings.
+    		Do the summary bullet points logically flow from the results without gaps in reasoning?
+    		Suggestions: Recommend ways to make the summary more concise or clarify conclusions based on the findings.
     	5.	Discussion:
-    	•	Does the discussion clearly address the limitations, applicability, and potential future work?
-    	•	Suggestions: Suggest if additional focus on limitations or a more detailed proposal for future research would be beneficial.
+    		Does the discussion clearly address the limitations, applicability, and potential future work?
+    		Suggestions: Suggest if additional focus on limitations or a more detailed proposal for future research would be beneficial.
     	6.	Acknowledgements and References:
-    	•	Are all contributors and co-authors credited? Are the references relevant and complete? Is there a QR code linking to supplemental materials like GitHub or demo videos?
-    	•	Suggestions: Recommend ensuring credit where due and possibly adding or refining resource links.
+    		Are all contributors and co-authors credited? Are the references relevant and complete? Is there a QR code linking to supplemental materials like GitHub or demo videos?
+    		Suggestions: Recommend ensuring credit where due and possibly adding or refining resource links.
     	7.	Style:
-    	•	Is the poster visually organized with well-separated sections and sparing use of color? Are fonts consistent and appropriate for headings and content?
-    	•	Suggestions: Suggest improvements to layout, color use, or font consistency if needed.
+    		Is the poster visually organized with well-separated sections and sparing use of color? Are fonts consistent and appropriate for headings and content?
+    		Suggestions: Suggest improvements to layout, color use, or font consistency if needed.
  
     4. Constructive Suggestions:
-	•	For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the poster.
-    •   For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+	For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the poster.
+    	For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
     """
-
+	
     try:
         response = agent.invoke([HumanMessage(content=prompt)])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
