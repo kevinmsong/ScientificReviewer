@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 api_key = st.secrets["openai_api_key"]
 client = OpenAI(api_key=api_key)
 
-def create_review_agents(num_agents, model="gpt-4o"):
+def create_review_agents(num_agents, model="gpt-4-vision-preview"):
     return [ChatOpenAI(temperature=0.1, openai_api_key=api_key, model=model) for _ in range(num_agents)]
 
 def extract_content(response, default_value):
@@ -199,12 +199,6 @@ def get_editorial_decision(average_rating):
         return "Reject"
 
 # Scientific Poster Review Functions
-def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
 
 def scientific_poster_review_page():
     st.header("Scientific Poster Review")
@@ -220,14 +214,25 @@ def scientific_poster_review_page():
             if uploaded_file.type == "application/pdf":
                 # Extract text from PDF
                 text_content = extract_text_from_pdf(uploaded_file)
-                analysis_result = asyncio.run(analyze_poster_text(text_content, agent))
+                # Convert PDF to image
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                    temp_pdf.write(uploaded_file.getvalue())
+                    temp_pdf_path = temp_pdf.name
+                
+                images = convert_from_bytes(open(temp_pdf_path, "rb").read())
+                image = images[0]  # Assuming single-page poster, take the first page
+                buffered = io.BytesIO()
+                image.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                
+                analysis_result = asyncio.run(analyze_poster(img_str, text_content, agent))
             else:
                 # Process image
                 image = Image.open(uploaded_file)
                 buffered = io.BytesIO()
                 image.save(buffered, format="JPEG")
                 img_str = base64.b64encode(buffered.getvalue()).decode()
-                analysis_result = asyncio.run(analyze_poster(img_str, agent))
+                analysis_result = asyncio.run(analyze_poster(img_str, None, agent))
 
             st.write("Analysis Result:")
             st.write(analysis_result)
@@ -240,26 +245,40 @@ def scientific_poster_review_page():
     else:
         st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
 
-async def analyze_poster_text(text_content, agent):
+async def analyze_poster(img_str, text_content, agent):
     prompt = f"""
-    This is the text content extracted from a scientific poster. Please analyze it considering the following points:
+    Please analyze this scientific poster considering the following points:
 
     1. What is the main problem/challenge being addressed by this project?
     2. How is this project innovative? What methods does it use to address the problem/challenge?
     3. Evaluate the scientific rigor of the poster based on the available information.
     4. Are the results meaningful and well-presented?
     5. How are the results benchmarked or compared to existing work?
+    6. Evaluate the visual design and layout of the poster. Is it effective in communicating the research?
 
     Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster.
 
-    Text content:
-    {text_content}
+    {"Here's the text content extracted from the poster:" if text_content else ""}
+    {text_content if text_content else ""}
 
     Please provide your analysis:
     """
 
     try:
-        response = await agent.ainvoke([HumanMessage(content=prompt)])
+        if text_content:
+            response = await agent.ainvoke([
+                HumanMessage(content=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
+                ])
+            ])
+        else:
+            response = await agent.ainvoke([
+                HumanMessage(content=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
+                ])
+            ])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
     except Exception as e:
         logging.error(f"Error getting response for poster analysis: {str(e)}")
