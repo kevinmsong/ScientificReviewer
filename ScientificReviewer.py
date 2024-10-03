@@ -260,7 +260,7 @@ def main():
     st.title("Scientific Reviewer Application")
     
     # Add version number to sidebar
-    st.sidebar.text("Version 1.6.0")
+    st.sidebar.text("Version 1.3.0")
     
     # Navigation
     page = st.sidebar.selectbox("Choose a review type", ["Grant Proposal Review", "Scientific Paper Review", "Scientific Poster Review"])
