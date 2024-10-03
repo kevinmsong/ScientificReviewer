@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 api_key = st.secrets["openai_api_key"]
 client = OpenAI(api_key=api_key)
 
-def create_review_agents(num_agents, model="gpt-4o"):
+def create_review_agents(num_agents, model="gpt-4-vision"):
     return [ChatOpenAI(temperature=0.1, openai_api_key=api_key, model=model) for _ in range(num_agents)]
 
 def extract_content(response, default_value):
@@ -29,9 +29,16 @@ def extract_content(response, default_value):
 def extract_pdf_content(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text_content = ""
+    images = []
     for page in pdf_document:
         text_content += page.get_text()
-    return text_content
+        for img in page.get_images():
+            xref = img[0]
+            base_image = pdf_document.extract_image(xref)
+            image_bytes = base_image["image"]
+            image = Image.open(io.BytesIO(image_bytes))
+            images.append(image)
+    return text_content, images
 
 def scientific_poster_review_page():
     st.header("Scientific Poster Review")
@@ -44,8 +51,8 @@ def scientific_poster_review_page():
         agent = create_review_agents(1)[0]
         
         try:
-            text_content = extract_pdf_content(uploaded_file)
-            analysis_result = analyze_poster(text_content, agent)
+            text_content, images = extract_pdf_content(uploaded_file)
+            analysis_result = analyze_poster(text_content, images, agent)
 
             st.write("Analysis Result:")
             st.write(analysis_result)
@@ -56,54 +63,74 @@ def scientific_poster_review_page():
     else:
         st.info("Please upload a poster (PDF) and click 'Start Analysis'.")
 
-def analyze_poster(text_content, agent):
+def analyze_poster(text_content, images, agent):
     prompt = f"""
     Please review the research poster thoroughly and provide the following:
  
     1. Summary:
-	Start with a concise summary of the poster’s overall strengths and weaknesses.
-	Highlight key areas where the poster excels and areas that need significant improvement.
+    Start with a concise summary of the poster's overall strengths and weaknesses.
+    Highlight key areas where the poster excels and areas that need significant improvement.
  
     2. Scoring Criteria:
-	Provide an overall score for the poster as well as a breakdown of scores for each section. Use a 1-9 scale, where:
-	1 is extremely poor,
-	5 is satisfactory, and
-	9 is flawless.
-	Distribute the scores according to a normal distribution, with 5 being the center point.
+    Provide an overall score for the poster as well as a breakdown of scores for each section. Use a 1-9 scale, where:
+    1 is extremely poor,
+    5 is satisfactory, and
+    9 is flawless.
+    Distribute the scores according to a normal distribution, with 5 being the center point.
  
     3. Detailed Evaluation:
     For each section, provide specific feedback and suggestions for improvement, including:
  
-    	1.	Introduction:
-    		Does the problem statement clearly define the research question?
-    		Are the basic concepts and past work relevant and explained sufficiently for the intended audience?
-    		Suggestions: Recommend adding clarity, adjusting scope, or incorporating more citations if needed.
-    	2.	Methods:
-    		Is the approach well-structured, with a clear explanation of input data, experimental design, and validation methods?
-    		Suggestions: Point out if additional details, better flow, or improved descriptions of validation strategies would be helpful.
-    	3.	Results:
-    		Are the findings well-presented with clear, detailed tables and figures? Are captions informative, and is the logic between results and conclusions sound?
-    		Suggestions: Highlight if the visuals or narrative need refinement, or if the logic behind the conclusions requires strengthening.
-    	4.	Summary:
-    		Do the summary bullet points logically flow from the results without gaps in reasoning?
-    		Suggestions: Recommend ways to make the summary more concise or clarify conclusions based on the findings.
-    	5.	Discussion:
-    		Does the discussion clearly address the limitations, applicability, and potential future work?
-    		Suggestions: Suggest if additional focus on limitations or a more detailed proposal for future research would be beneficial.
-    	6.	Acknowledgements and References:
-    		Are all contributors and co-authors credited? Are the references relevant and complete? Is there a QR code linking to supplemental materials like GitHub or demo videos?
-    		Suggestions: Recommend ensuring credit where due and possibly adding or refining resource links.
-    	7.	Style:
-    		Is the poster visually organized with well-separated sections and sparing use of color? Are fonts consistent and appropriate for headings and content?
-    		Suggestions: Suggest improvements to layout, color use, or font consistency if needed.
+    1. Introduction:
+        Does the problem statement clearly define the research question?
+        Are the basic concepts and past work relevant and explained sufficiently for the intended audience?
+        Suggestions: Recommend adding clarity, adjusting scope, or incorporating more citations if needed.
+    2. Methods:
+        Is the approach well-structured, with a clear explanation of input data, experimental design, and validation methods?
+        Suggestions: Point out if additional details, better flow, or improved descriptions of validation strategies would be helpful.
+    3. Results:
+        Are the findings well-presented with clear, detailed tables and figures? Are captions informative, and is the logic between results and conclusions sound?
+        Suggestions: Highlight if the visuals or narrative need refinement, or if the logic behind the conclusions requires strengthening.
+    4. Summary:
+        Do the summary bullet points logically flow from the results without gaps in reasoning?
+        Suggestions: Recommend ways to make the summary more concise or clarify conclusions based on the findings.
+    5. Discussion:
+        Does the discussion clearly address the limitations, applicability, and potential future work?
+        Suggestions: Suggest if additional focus on limitations or a more detailed proposal for future research would be beneficial.
+    6. Acknowledgements and References:
+        Are all contributors and co-authors credited? Are the references relevant and complete? Is there a QR code linking to supplemental materials like GitHub or demo videos?
+        Suggestions: Recommend ensuring credit where due and possibly adding or refining resource links.
+    7. Style:
+        Is the poster visually organized with well-separated sections and sparing use of color? Are fonts consistent and appropriate for headings and content?
+        Suggestions: Suggest improvements to layout, color use, or font consistency if needed.
  
-    4. Constructive Suggestions:
-	For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the poster.
-    	For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+    4. Figure Analysis:
+    Analyze each figure in the poster. Describe what the figure shows, its relevance to the research, and any improvements that could be made in terms of clarity, design, or information presentation.
+ 
+    5. Constructive Suggestions:
+    For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the poster.
+    For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+    
+    Here's the text content extracted from the poster:
+    {text_content}
+
+    Please provide your analysis, considering both the text content and the figures in the poster:
     """
-	
+
     try:
-        response = agent.invoke([HumanMessage(content=prompt)])
+        message_content = [{"type": "text", "text": prompt}]
+        for i, img in enumerate(images):
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            message_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{img_str}"
+                }
+            })
+
+        response = agent.invoke([HumanMessage(content=message_content)])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
     except Exception as e:
         logging.error(f"Error getting response for poster analysis: {str(e)}")
