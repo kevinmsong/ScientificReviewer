@@ -332,23 +332,29 @@ def scientific_poster_review_page():
         
         agent = create_review_agents(1)[0]
         
-        if uploaded_file.type == "application/pdf":
-            # Convert PDF to image (this is a simplification, you may need to use a library like pdf2image for better results)
-            image = Image.open(uploaded_file)
-        else:
-            image = Image.open(uploaded_file)
+        try:
+            if uploaded_file.type == "application/pdf":
+                # For PDF files, we'll need to implement PDF to image conversion
+                st.error("PDF analysis is not yet implemented. Please upload an image file.")
+                return
+            else:
+                image = Image.open(uploaded_file)
 
-        # Convert image to base64
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
-        
-        analysis_result = asyncio.run(analyze_poster(img_str, agent))
+            # Convert image to base64
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            analysis_result = asyncio.run(analyze_poster(img_str, agent))
 
-        st.write("Analysis Result:")
-        st.write(analysis_result)
+            st.write("Analysis Result:")
+            st.write(analysis_result)
 
-        st.write("Poster analysis completed.")
+            st.write("Poster analysis completed.")
+        except UnidentifiedImageError:
+            st.error("The uploaded file could not be identified as an image. Please ensure you're uploading a valid image file.")
+        except Exception as e:
+            st.error(f"An error occurred while processing the image: {str(e)}")
     else:
         st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
 
