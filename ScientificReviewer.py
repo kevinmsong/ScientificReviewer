@@ -3,11 +3,8 @@ import logging
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
-import fitz
+import fitz  # PyMuPDF
 import io
-from PIL import Image
-import base64
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
@@ -29,66 +26,111 @@ def extract_content(response, default_value):
         logging.warning(f"Unexpected response type: {type(response)}")
         return default_value
 
-def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
-
 def extract_pdf_content(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text_content = ""
-    images = []
-
     for page in pdf_document:
         text_content += page.get_text()
-        for img in page.get_images():
-            xref = img[0]
-            base_image = pdf_document.extract_image(xref)
-            image_bytes = base_image["image"]
-            image = Image.open(io.BytesIO(image_bytes))
-            images.append(image)
+    return text_content
 
-    return text_content, images
+def scientific_poster_review_page():
+    st.header("Scientific Poster Review")
+
+    uploaded_file = st.file_uploader("Upload your poster (PDF)", type=["pdf"])
+
+    if uploaded_file is not None and st.button("Start Analysis"):
+        st.write("Starting poster analysis process...")
+        
+        agent = create_review_agents(1)[0]
+        
+        try:
+            text_content = extract_pdf_content(uploaded_file)
+            analysis_result = analyze_poster(text_content, agent)
+
+            st.write("Analysis Result:")
+            st.write(analysis_result)
+
+            st.write("Poster analysis completed.")
+        except Exception as e:
+            st.error(f"An error occurred while processing the file: {str(e)}")
+    else:
+        st.info("Please upload a poster (PDF) and click 'Start Analysis'.")
+
+def analyze_poster(text_content, agent):
+    prompt = f"""
+    Please analyze this scientific poster based on the following text content. Consider these points:
+
+    1. What is the main problem/challenge being addressed by this project?
+    2. How is this project innovative? What methods does it use to address the problem/challenge?
+    3. Evaluate the scientific rigor of the poster based on the available information.
+    4. Are the results meaningful and well-presented?
+    5. How are the results benchmarked or compared to existing work?
+    6. Based on the text, evaluate the structure and organization of the poster. Is it effective in communicating the research?
+    7. Analyze any mentions of figures, graphs, or visual elements in the text. Are they described clearly and informatively?
+
+    Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster based on the text content.
+
+    Here's the text content extracted from the poster:
+    {text_content}
+
+    Please provide your analysis:
+    """
+
+    try:
+        response = agent.invoke([HumanMessage(content=prompt)])
+        analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
+    except Exception as e:
+        logging.error(f"Error getting response for poster analysis: {str(e)}")
+        analysis = f"[Error: Issue with poster analysis: {str(e)}]"
+
+    return analysis
+
+def grant_review_page():
+    st.header("Grant Proposal Review")
     
-# Grant Review Functions
-async def review_proposal(content, agents, expertises, review_type):
-    criteria = ["Significance", "Investigator(s)", "Innovation", "Approach", "Environment"] if review_type == "NIH" else ["Intellectual Merit", "Broader Impacts"]
+    uploaded_file = st.file_uploader("Upload your project proposal (PDF)", type="pdf")
+
+    if uploaded_file is not None:
+        content = extract_pdf_content(uploaded_file)
+        
+        review_type = st.radio("Select review type:", ("NIH Proposal", "NSF Proposal"))
+        
+        num_agents = st.number_input("Enter the number of reviewer agents:", min_value=1, max_value=5, value=3)
+        
+        expertises = []
+        for i in range(num_agents):
+            expertise = st.text_input(f"Enter expertise for agent {i+1}:", f"Scientific Expert {i+1}")
+            expertises.append(expertise)
+
+        if st.button("Start Review"):
+            st.write("Starting the review process...")
+
+            agents = create_review_agents(num_agents)
+            
+            review_log = review_proposal(content, agents, expertises, review_type)
+
+            for review in review_log:
+                st.write(f"Review by {review['expertise']}:")
+                st.write(review['review'])
+
+            st.write("Review process completed.")
+
+def review_proposal(content, agents, expertises, review_type):
+    criteria = ["Significance", "Investigator(s)", "Innovation", "Approach", "Environment"] if review_type == "NIH Proposal" else ["Intellectual Merit", "Broader Impacts"]
     review_log = []
 
     for agent, expertise in zip(agents, expertises):
-        review_prompt = f"""
-        Please review, as a {expertise} for a postdoctoral scientific audience, the following {'NIH' if review_type == 'NIH' else 'NSF'} project proposal considering these main criteria:
+        prompt = f"""
+        Please review, as a {expertise} for a postdoctoral scientific audience, the following {'NIH' if review_type == "NIH Proposal" else 'NSF'} project proposal considering these main criteria:
         
-        {"1. Significance\n2. Investigator(s)\n3. Innovation\n4. Approach\n5. Environment" if review_type == "NIH" else "1. Intellectual Merit: The potential to advance knowledge\n2. Broader Impacts: The potential to benefit society and contribute to desired societal outcomes"}
-
-        {"" if review_type == "NIH" else '''
-        For both criteria, consider:
-        a) Potential to advance knowledge/benefit society
-        b) Creativity, originality, and transformative potential
-        c) Soundness of the plan and assessment mechanism
-        d) Qualifications of the team/individual
-        e) Adequacy of resources
-        '''}
+        {", ".join(criteria)}
 
         Additional review principles:
-        Focus on the highest quality and potential to advance or transform knowledge frontiers
-        Consider broader contributions to societal goals
-        Assess based on appropriate metrics, considering project size and resources
-
-        Please provide your review, addressing the following points for each criterion:
-        1. Significance of the work
-        2. Innovation in the approach
-        3. Rigor and reproducibility
-        4. Clarity of presentation
-        5. Evaluation methods
+        - Focus on the highest quality and potential to advance or transform knowledge frontiers
+        - Consider broader contributions to societal goals
+        - Assess based on appropriate metrics, considering project size and resources
 
         For each criterion, provide a harsh and critical review, focusing on weaknesses. Be technical, elaborate, and extremely critical in your assessment.
-
-        Highlight any specific paragraphs that need significant correction by referring to them using their starting words.
-        
-        If needed, you may use block quotes to point at specific areas that need improvement, and provide concrete suggestions for each quoted section.
 
         End your review for each criterion with a clear numerical rating from 1 to 9 (1 being the lowest, 9 being the highest) in the following format:
         
@@ -103,57 +145,62 @@ async def review_proposal(content, agents, expertises, review_type):
         """
 
         try:
-            response = await agent.ainvoke([HumanMessage(content=review_prompt)])
+            response = agent.invoke([HumanMessage(content=prompt)])
             review_text = extract_content(response, "[Error: Unable to extract response]")
         except Exception as e:
             logging.error(f"Error getting response: {str(e)}")
             review_text = "[Error: Issue with review]"
 
         review_log.append({"review": review_text, "expertise": expertise})
-        st.write(f"Review by {expertise}:\n\n{review_text}\n\n")
 
     return review_log
 
-def extract_ratings(review_text, criteria):
-    ratings = {}
-    for criterion in criteria:
-        match = re.search(rf"{criterion} Rating:\s*(\d+)/9", review_text)
-        if match:
-            ratings[criterion] = int(match.group(1))
-        else:
-            ratings[criterion] = None
-    return ratings
+def scientific_paper_review_page():
+    st.header("Scientific Paper Review")
 
-def calculate_lowest_ratings(review_log, criteria):
-    lowest_ratings = {criterion: 9 for criterion in criteria}
-    lowest_rationales = {criterion: "" for criterion in criteria}
+    uploaded_file = st.file_uploader("Upload your scientific paper (PDF)", type="pdf")
 
-    for review in review_log:
-        review_text = review["review"]
-        ratings = extract_ratings(review_text, criteria)
+    if uploaded_file is not None:
+        content = extract_pdf_content(uploaded_file)
+
+        num_agents = st.number_input("Enter the number of reviewer agents:", min_value=1, max_value=5, value=3)
         
-        for criterion in criteria:
-            if ratings[criterion] is not None and ratings[criterion] < lowest_ratings[criterion]:
-                lowest_ratings[criterion] = ratings[criterion]
-                rationale_match = re.search(rf"{criterion} Rating:.*?\n(.*?)(?=\n\n|\Z)", review_text, re.DOTALL)
-                if rationale_match:
-                    lowest_rationales[criterion] = rationale_match.group(1).strip()
+        expertises = []
+        for i in range(num_agents):
+            expertise = st.text_input(f"Enter expertise for agent {i+1}:", f"Scientific Expert {i+1}")
+            expertises.append(expertise)
 
-    return lowest_ratings, lowest_rationales
+        if st.button("Start Review"):
+            st.write("Starting peer review process...")
+            
+            agents = create_review_agents(num_agents)
+            
+            review_log = review_scientific_paper(content, agents, expertises)
 
-# Scientific Paper Review Functions
-async def review_article(content, agents, expertises):
+            for review in review_log:
+                st.write(f"Review by {review['reviewer']}:")
+                st.write(review['review'])
+
+            average_rating = calculate_average_rating(review_log)
+            if average_rating:
+                st.write(f"\nAverage Rating: {average_rating:.2f}")
+                decision = get_editorial_decision(average_rating)
+                st.write(f"Recommended Editorial Decision: {decision}")
+            else:
+                st.write("Unable to calculate average rating.")
+
+            st.write("Peer review process completed.")
+
+def review_scientific_paper(content, agents, expertises):
     review_log = []
 
-    for i, (agent, expertise) in enumerate(zip(agents, expertises)):
+    for agent, expertise in zip(agents, expertises):
         prompt = f"""
-        You are an expert in {expertise}. Please review the following abstract/article for peer-reviewed publication.
+        You are an expert in {expertise}. Please review the following scientific paper for peer-reviewed publication.
         
         Focus on significance, innovation, and comprehensive evaluation of approaches (rigor and reproducibility, clarity, evaluation, etc.)
         
-        Please be technical, elaborate, and extremely critical. Make the reviews harsher, and focus on weaknesses and specific areas of the paper, section by section.
-
-        If needed, you may use block quotes to point at specific areas that need improvement, and provide concrete suggestions for each quoted section.
+        Please be technical, elaborate, and extremely critical. Make the review harsh, and focus on weaknesses and specific areas of the paper, section by section.
 
         Content to review:
         {content}
@@ -171,14 +218,13 @@ async def review_article(content, agents, expertises):
         """
 
         try:
-            response = await agent.ainvoke([HumanMessage(content=prompt)])
-            review_text = extract_content(response, f"[Error: Unable to extract response for Reviewer {i+1}]")
+            response = agent.invoke([HumanMessage(content=prompt)])
+            review_text = extract_content(response, f"[Error: Unable to extract response for Reviewer {expertise}]")
         except Exception as e:
-            logging.error(f"Error getting response from Reviewer {i+1}: {str(e)}")
-            review_text = f"[Error: Issue with Reviewer {i+1}]"
+            logging.error(f"Error getting response from Reviewer {expertise}: {str(e)}")
+            review_text = f"[Error: Issue with Reviewer {expertise}]"
 
         review_log.append({"reviewer": expertise, "review": review_text})
-        st.write(f"Reviewer ({expertise}):\n\n{review_text}\n\n")
 
     return review_log
 
@@ -210,78 +256,11 @@ def get_editorial_decision(average_rating):
     else:
         return "Reject"
 
-# Scientific Poster Review Functions
-def scientific_poster_review_page():
-    st.header("Scientific Poster Review")
-
-    uploaded_file = st.file_uploader("Upload your poster (PDF or Image)", type=["pdf", "png", "jpg", "jpeg"])
-
-    if uploaded_file is not None and st.button("Start Analysis"):
-        st.write("Starting poster analysis process...")
-        
-        agent = create_review_agents(1)[0]
-        
-        try:
-            if uploaded_file.type == "application/pdf":
-                text_content, images = extract_pdf_content(uploaded_file)
-            else:
-                image = Image.open(uploaded_file)
-                text_content = ""
-                images = [image]
-            
-            analysis_result = asyncio.run(analyze_poster(text_content, images, agent))
-
-            st.write("Analysis Result:")
-            st.write(analysis_result)
-
-            st.write("Poster analysis completed.")
-        except Exception as e:
-            st.error(f"An error occurred while processing the file: {str(e)}")
-    else:
-        st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
-
-async def analyze_poster(text_content, images, agent):
-    prompt = f"""
-    Please analyze this scientific poster considering the following points:
-
-    1. What is the main problem/challenge being addressed by this project?
-    2. How is this project innovative? What methods does it use to address the problem/challenge?
-    3. Evaluate the scientific rigor of the poster based on the available information.
-    4. Are the results meaningful and well-presented?
-    5. How are the results benchmarked or compared to existing work?
-    6. Evaluate the visual design and layout of the poster. Is it effective in communicating the research?
-    7. Analyze the figures and graphs presented in the poster. Are they clear, informative, and well-labeled?
-
-    Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster, including the visual elements.
-
-    Here's the text content extracted from the poster:
-    {text_content}
-
-    Please provide your analysis, considering both the text and the visual elements:
-    """
-
-    try:
-        message_content = [{"type": "text", "text": prompt}]
-        for i, img in enumerate(images):
-            buffered = io.BytesIO()
-            img.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            message_content.append({"type": "image_url", "image_url": f"data:image/png;base64,{img_str}"})
-
-        response = await agent.ainvoke([HumanMessage(content=message_content)])
-        analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
-    except Exception as e:
-        logging.error(f"Error getting response for poster analysis: {str(e)}")
-        analysis = f"[Error: Issue with poster analysis: {str(e)}]"
-
-    return analysis
-    
-# Main Application
 def main():
     st.title("Scientific Reviewer Application")
     
     # Add version number to sidebar
-    st.sidebar.text("Version 1.3.0")
+    st.sidebar.text("Version 1.6.0")
     
     # Navigation
     page = st.sidebar.selectbox("Choose a review type", ["Grant Proposal Review", "Scientific Paper Review", "Scientific Poster Review"])
@@ -292,86 +271,6 @@ def main():
         scientific_paper_review_page()
     elif page == "Scientific Poster Review":
         scientific_poster_review_page()
-
-def grant_review_page():
-    st.header("Grant Proposal Review")
-    
-    uploaded_file = st.file_uploader("Upload your project proposal (PDF)", type="pdf")
-
-    if uploaded_file is not None:
-        content = extract_text_from_pdf(uploaded_file)
-
-        review_type = st.radio("Select review type:", ("NIH Proposal", "NSF Proposal"))
-        
-        num_agents = st.number_input("Enter the number of reviewer agents:", min_value=1, max_value=5, value=3)
-        
-        expertises = []
-        for i in range(num_agents):
-            expertise = st.text_input(f"Enter expertise for agent {i+1}:", f"Scientific Expert {i+1}")
-            expertises.append(expertise)
-
-        if st.button("Start Review"):
-            st.write("Starting the review process...")
-
-            agents = create_review_agents(num_agents)
-            
-            if review_type == "NIH Proposal":
-                review_log = asyncio.run(review_proposal(content, agents, expertises, "NIH"))
-                criteria = ["Significance", "Investigator(s)", "Innovation", "Approach", "Environment"]
-            else:  # NSF Proposal
-                review_log = asyncio.run(review_proposal(content, agents, expertises, "NSF"))
-                criteria = ["Intellectual Merit", "Broader Impacts"]
-
-            lowest_ratings, lowest_rationales = calculate_lowest_ratings(review_log, criteria)
-
-            st.write("\nLowest Ratings and Rationales:")
-            for criterion in criteria:
-                st.write(f"{criterion}: {lowest_ratings[criterion]}/9")
-                st.write(f"Rationale: {lowest_rationales[criterion]}\n")
-
-            st.write("Review process completed.")
-
-def scientific_paper_review_page():
-    st.header("Scientific Paper Review")
-
-    input_method = st.radio("Choose input method:", ("Paste Abstract", "Paste Full Text", "Upload PDF"))
-
-    content = ""
-    if input_method == "Paste Abstract":
-        content = st.text_area("Paste the abstract here:", height=300)
-    elif input_method == "Paste Full Text":
-        content = st.text_area("Paste the full text of your paper here:", height=500)
-    else:
-        uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
-        if uploaded_file is not None:
-            content = extract_text_from_pdf(uploaded_file)
-
-    num_agents = st.number_input("Enter the number of reviewer agents:", min_value=1, max_value=5, value=3)
-    
-    expertises = []
-    for i in range(num_agents):
-        expertise = st.text_input(f"Enter expertise for agent {i+1}:", f"Scientific Expert {i+1}")
-        expertises.append(expertise)
-
-    if st.button("Start Review"):
-        if content:
-            st.write("Starting peer review process...")
-            
-            agents = create_review_agents(num_agents)
-            
-            review_log = asyncio.run(review_article(content, agents, expertises))
-
-            average_rating = calculate_average_rating(review_log)
-            if average_rating:
-                st.write(f"\nAverage Rating: {average_rating:.2f}")
-                decision = get_editorial_decision(average_rating)
-                st.write(f"Recommended Editorial Decision: {decision}")
-            else:
-                st.write("Unable to calculate average rating.")
-
-            st.write("Peer review process completed.")
-        else:
-            st.warning("Please provide content for review (either paste an abstract, full text, or upload a PDF).")
 
 if __name__ == "__main__":
     main()
