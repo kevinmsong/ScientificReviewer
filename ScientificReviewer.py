@@ -215,24 +215,20 @@ def scientific_poster_review_page():
                 # Extract text from PDF
                 text_content = extract_text_from_pdf(uploaded_file)
                 # Convert PDF to image
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-                    temp_pdf.write(uploaded_file.getvalue())
-                    temp_pdf_path = temp_pdf.name
-                
-                images = convert_from_bytes(open(temp_pdf_path, "rb").read())
-                image = images[0]  # Assuming single-page poster, take the first page
-                buffered = io.BytesIO()
-                image.save(buffered, format="JPEG")
-                img_str = base64.b64encode(buffered.getvalue()).decode()
-                
-                analysis_result = asyncio.run(analyze_poster(img_str, text_content, agent))
+                image = convert_pdf_to_image(uploaded_file)
+                if image is None:
+                    st.error("Failed to convert PDF to image. Please ensure you have Poppler installed.")
+                    return
             else:
                 # Process image
                 image = Image.open(uploaded_file)
-                buffered = io.BytesIO()
-                image.save(buffered, format="JPEG")
-                img_str = base64.b64encode(buffered.getvalue()).decode()
-                analysis_result = asyncio.run(analyze_poster(img_str, None, agent))
+                text_content = None
+
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            analysis_result = asyncio.run(analyze_poster(img_str, text_content, agent))
 
             st.write("Analysis Result:")
             st.write(analysis_result)
@@ -244,6 +240,18 @@ def scientific_poster_review_page():
             st.error(f"An error occurred while processing the file: {str(e)}")
     else:
         st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
+
+def convert_pdf_to_image(pdf_file):
+    try:
+        from pdf2image import convert_from_bytes
+        images = convert_from_bytes(pdf_file.getvalue())
+        return images[0]  # Assuming single-page poster, take the first page
+    except ImportError:
+        st.error("pdf2image is not installed. Please install it to process PDF files.")
+        return None
+    except Exception as e:
+        st.error(f"Error converting PDF to image: {str(e)}")
+        return None
 
 async def analyze_poster(img_str, text_content, agent):
     prompt = f"""
@@ -265,20 +273,12 @@ async def analyze_poster(img_str, text_content, agent):
     """
 
     try:
-        if text_content:
-            response = await agent.ainvoke([
-                HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
-                ])
+        response = await agent.ainvoke([
+            HumanMessage(content=[
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
             ])
-        else:
-            response = await agent.ainvoke([
-                HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
-                ])
-            ])
+        ])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
     except Exception as e:
         logging.error(f"Error getting response for poster analysis: {str(e)}")
