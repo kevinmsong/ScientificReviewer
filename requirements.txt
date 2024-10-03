@@ -7,4 +7,4 @@ python-dotenv
 aiohttp
 langchain_openai
 pdf2image
-fitz
+PyMuPDF
