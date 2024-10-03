@@ -6,3 +6,4 @@ Pillow
 python-dotenv
 aiohttp
 langchain_openai
+pdf2image
