@@ -10,6 +10,7 @@ import base64
 import asyncio
 import re
 from pdf2image import convert_from_bytes
+from pdf2image.exceptions import PDFInfoNotInstalledError
 import tempfile
 
 logging.basicConfig(level=logging.INFO)
@@ -198,35 +199,74 @@ def get_editorial_decision(average_rating):
         return "Reject"
 
 # Scientific Poster Review Functions
-async def analyze_poster(image_base64, agent):
-    prompt = """
-    This is a scientific poster. What is the problem/challenge being addressed by this project?
-    
-    How is this project innovative? What methods does it use to address the problem/challenge?
-    
-    Can you evaluate the scientific rigor of the poster? Are its results meaningful?
-    
-    How are the results benchmarked? Please be technical, elaborate, and extremely harsh and critical in your review, and suggest concrete improvements, section by section, figure by figure, of the poster.
+def extract_text_from_pdf(pdf_file):
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
 
-    If needed, you may use block quotes to point at specific areas that need improvement, and provide concrete suggestions for each quoted section.
+def scientific_poster_review_page():
+    st.header("Scientific Poster Review")
 
-    Please outline your generated report with concrete details critiquing each section of the poster.
+    uploaded_file = st.file_uploader("Upload your poster (PDF or Image)", type=["pdf", "png", "jpg", "jpeg"])
 
-    End your review with a rating from 1 to 9 (1 being the lowest, 9 being the highest) and a brief summary.
+    if uploaded_file is not None and st.button("Start Analysis"):
+        st.write("Starting poster analysis process...")
+        
+        agent = create_review_agents(1)[0]
+        
+        try:
+            if uploaded_file.type == "application/pdf":
+                # Extract text from PDF
+                text_content = extract_text_from_pdf(uploaded_file)
+                analysis_result = asyncio.run(analyze_poster_text(text_content, agent))
+            else:
+                # Process image
+                image = Image.open(uploaded_file)
+                buffered = io.BytesIO()
+                image.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                analysis_result = asyncio.run(analyze_poster(img_str, agent))
+
+            st.write("Analysis Result:")
+            st.write(analysis_result)
+
+            st.write("Poster analysis completed.")
+        except UnidentifiedImageError:
+            st.error("The uploaded file could not be identified as an image. Please ensure you're uploading a valid image file.")
+        except Exception as e:
+            st.error(f"An error occurred while processing the file: {str(e)}")
+    else:
+        st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
+
+async def analyze_poster_text(text_content, agent):
+    prompt = f"""
+    This is the text content extracted from a scientific poster. Please analyze it considering the following points:
+
+    1. What is the main problem/challenge being addressed by this project?
+    2. How is this project innovative? What methods does it use to address the problem/challenge?
+    3. Evaluate the scientific rigor of the poster based on the available information.
+    4. Are the results meaningful and well-presented?
+    5. How are the results benchmarked or compared to existing work?
+
+    Please be technical, elaborate, and critically analyze the content. Suggest concrete improvements for each section of the poster.
+
+    Text content:
+    {text_content}
+
+    Please provide your analysis:
     """
 
     try:
-        response = await agent.ainvoke([HumanMessage(content=[
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-        ])])
+        response = await agent.ainvoke([HumanMessage(content=prompt)])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
     except Exception as e:
         logging.error(f"Error getting response for poster analysis: {str(e)}")
         analysis = f"[Error: Issue with poster analysis: {str(e)}]"
 
     return analysis
-
+    
 # Main Application
 def main():
     st.title("Scientific Reviewer Application")
@@ -323,49 +363,6 @@ def scientific_paper_review_page():
             st.write("Peer review process completed.")
         else:
             st.warning("Please provide content for review (either paste an abstract, full text, or upload a PDF).")
-
-def scientific_poster_review_page():
-    st.header("Scientific Poster Review")
-
-    uploaded_file = st.file_uploader("Upload your poster (PDF or Image)", type=["pdf", "png", "jpg", "jpeg"])
-
-    if uploaded_file is not None and st.button("Start Analysis"):
-        st.write("Starting poster analysis process...")
-        
-        agent = create_review_agents(1)[0]
-        
-        try:
-            if uploaded_file.type == "application/pdf":
-                # Convert PDF to image
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-                    temp_pdf.write(uploaded_file.getvalue())
-                    temp_pdf_path = temp_pdf.name
-
-                images = convert_from_bytes(uploaded_file.getvalue())
-                if not images:
-                    st.error("Failed to convert PDF to image. The PDF might be empty or corrupted.")
-                    return
-                image = images[0]  # We'll analyze only the first page of the PDF
-            else:
-                image = Image.open(uploaded_file)
-
-            # Convert image to base64
-            buffered = io.BytesIO()
-            image.save(buffered, format="JPEG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            analysis_result = asyncio.run(analyze_poster(img_str, agent))
-
-            st.write("Analysis Result:")
-            st.write(analysis_result)
-
-            st.write("Poster analysis completed.")
-        except UnidentifiedImageError:
-            st.error("The uploaded file could not be identified as an image. Please ensure you're uploading a valid image file.")
-        except Exception as e:
-            st.error(f"An error occurred while processing the file: {str(e)}")
-    else:
-        st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
 
 if __name__ == "__main__":
     main()
