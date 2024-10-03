@@ -250,7 +250,7 @@ async def analyze_poster_text(text_content, agent):
     4. Are the results meaningful and well-presented?
     5. How are the results benchmarked or compared to existing work?
 
-    Please be technical, elaborate, and critically analyze the content. Suggest concrete improvements for each section of the poster.
+    Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster.
 
     Text content:
     {text_content}
