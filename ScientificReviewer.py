@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 api_key = st.secrets["openai_api_key"]
 client = OpenAI(api_key=api_key)
 
-def create_review_agents(num_agents, model="gpt-4-vision"):
+def create_review_agents(num_agents, model="gpt-4-turbo"):
     return [ChatOpenAI(temperature=0.1, openai_api_key=api_key, model=model) for _ in range(num_agents)]
 
 def extract_content(response, default_value):
