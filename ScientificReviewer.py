@@ -9,6 +9,8 @@ from PIL import Image
 import base64
 import asyncio
 import re
+from pdf2image import convert_from_bytes
+import tempfile
 
 logging.basicConfig(level=logging.INFO)
 
@@ -334,9 +336,16 @@ def scientific_poster_review_page():
         
         try:
             if uploaded_file.type == "application/pdf":
-                # For PDF files, we'll need to implement PDF to image conversion
-                st.error("PDF analysis is not yet implemented. Please upload an image file.")
-                return
+                # Convert PDF to image
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                    temp_pdf.write(uploaded_file.getvalue())
+                    temp_pdf_path = temp_pdf.name
+
+                images = convert_from_bytes(uploaded_file.getvalue())
+                if not images:
+                    st.error("Failed to convert PDF to image. The PDF might be empty or corrupted.")
+                    return
+                image = images[0]  # We'll analyze only the first page of the PDF
             else:
                 image = Image.open(uploaded_file)
 
@@ -354,7 +363,7 @@ def scientific_poster_review_page():
         except UnidentifiedImageError:
             st.error("The uploaded file could not be identified as an image. Please ensure you're uploading a valid image file.")
         except Exception as e:
-            st.error(f"An error occurred while processing the image: {str(e)}")
+            st.error(f"An error occurred while processing the file: {str(e)}")
     else:
         st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
 
