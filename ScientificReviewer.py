@@ -3,15 +3,11 @@ import logging
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
-import PyPDF2
+import fitz
 import io
 from PIL import Image
 import base64
 import asyncio
-import re
-from pdf2image import convert_from_bytes
-from pdf2image.exceptions import PDFInfoNotInstalledError
-import tempfile
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,6 +36,22 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text()
     return text
 
+def extract_pdf_content(pdf_file):
+    pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    text_content = ""
+    images = []
+
+    for page in pdf_document:
+        text_content += page.get_text()
+        for img in page.get_images():
+            xref = img[0]
+            base_image = pdf_document.extract_image(xref)
+            image_bytes = base_image["image"]
+            image = Image.open(io.BytesIO(image_bytes))
+            images.append(image)
+
+    return text_content, images
+    
 # Grant Review Functions
 async def review_proposal(content, agents, expertises, review_type):
     criteria = ["Significance", "Investigator(s)", "Innovation", "Approach", "Environment"] if review_type == "NIH" else ["Intellectual Merit", "Broader Impacts"]
@@ -199,7 +211,6 @@ def get_editorial_decision(average_rating):
         return "Reject"
 
 # Scientific Poster Review Functions
-
 def scientific_poster_review_page():
     st.header("Scientific Poster Review")
 
@@ -212,48 +223,24 @@ def scientific_poster_review_page():
         
         try:
             if uploaded_file.type == "application/pdf":
-                # Extract text from PDF
-                text_content = extract_text_from_pdf(uploaded_file)
-                # Convert PDF to image
-                image = convert_pdf_to_image(uploaded_file)
-                if image is None:
-                    st.error("Failed to convert PDF to image. Please ensure you have Poppler installed.")
-                    return
+                text_content, images = extract_pdf_content(uploaded_file)
             else:
-                # Process image
                 image = Image.open(uploaded_file)
-                text_content = None
-
-            buffered = io.BytesIO()
-            image.save(buffered, format="JPEG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
+                text_content = ""
+                images = [image]
             
-            analysis_result = asyncio.run(analyze_poster(img_str, text_content, agent))
+            analysis_result = asyncio.run(analyze_poster(text_content, images, agent))
 
             st.write("Analysis Result:")
             st.write(analysis_result)
 
             st.write("Poster analysis completed.")
-        except UnidentifiedImageError:
-            st.error("The uploaded file could not be identified as an image. Please ensure you're uploading a valid image file.")
         except Exception as e:
             st.error(f"An error occurred while processing the file: {str(e)}")
     else:
         st.info("Please upload a poster (either PDF or image) and click 'Start Analysis'.")
 
-def convert_pdf_to_image(pdf_file):
-    try:
-        from pdf2image import convert_from_bytes
-        images = convert_from_bytes(pdf_file.getvalue())
-        return images[0]  # Assuming single-page poster, take the first page
-    except ImportError:
-        st.error("pdf2image is not installed. Please install it to process PDF files.")
-        return None
-    except Exception as e:
-        st.error(f"Error converting PDF to image: {str(e)}")
-        return None
-
-async def analyze_poster(img_str, text_content, agent):
+async def analyze_poster(text_content, images, agent):
     prompt = f"""
     Please analyze this scientific poster considering the following points:
 
@@ -263,22 +250,25 @@ async def analyze_poster(img_str, text_content, agent):
     4. Are the results meaningful and well-presented?
     5. How are the results benchmarked or compared to existing work?
     6. Evaluate the visual design and layout of the poster. Is it effective in communicating the research?
+    7. Analyze the figures and graphs presented in the poster. Are they clear, informative, and well-labeled?
 
-    Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster.
+    Please be technical, elaborate, and critically analyze the content. You may be harsh in your review. Suggest concrete improvements for each section of the poster, including the visual elements.
 
-    {"Here's the text content extracted from the poster:" if text_content else ""}
-    {text_content if text_content else ""}
+    Here's the text content extracted from the poster:
+    {text_content}
 
-    Please provide your analysis:
+    Please provide your analysis, considering both the text and the visual elements:
     """
 
     try:
-        response = await agent.ainvoke([
-            HumanMessage(content=[
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_str}"}
-            ])
-        ])
+        message_content = [{"type": "text", "text": prompt}]
+        for i, img in enumerate(images):
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            message_content.append({"type": "image_url", "image_url": f"data:image/png;base64,{img_str}"})
+
+        response = await agent.ainvoke([HumanMessage(content=message_content)])
         analysis = extract_content(response, "[Error: Unable to extract response for poster analysis]")
     except Exception as e:
         logging.error(f"Error getting response for poster analysis: {str(e)}")
