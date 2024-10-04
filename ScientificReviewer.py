@@ -111,7 +111,7 @@ def analyze_poster(text_content, images, agent):
  
     5. Constructive Suggestions:
     For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the poster.
-    For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+    For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
     
     Here's the text content extracted from the poster:
     {text_content}
@@ -198,7 +198,7 @@ def review_proposal(content, agents, expertises, review_type):
  
         4. Constructive Suggestions:
         For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the proposal.
-        For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+        For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
         For each criterion, provide a harsh and critical review, focusing on weaknesses. Be technical, elaborate, and extremely critical in your assessment.
 
         End your review for each criterion with a clear numerical rating from 1 to 9 (1 being the lowest, 9 being the highest) in the following format:
@@ -280,8 +280,56 @@ def review_scientific_paper(content, agents, expertises):
         3. Rigor and reproducibility
         4. Clarity of presentation
         5. Evaluation methods
+        
+        Please review the research poster thoroughly and provide the following:
+        
+        1. Summary:
+        Start with a concise summary of the paper's overall strengths and weaknesses.
+        Highlight key areas where the paper excels and areas that need significant improvement.
+     
+        2. Scoring Criteria:
+        Provide an overall score for the paper as well as a breakdown of scores for each section. Use a 1-9 scale, where:
+        1 is extremely poor,
+        5 is satisfactory, and
+        9 is flawless.
+        Distribute the scores according to a normal distribution, with 5 being the center point.
+     
+        3. Detailed Evaluation:
+        For each section, provide specific feedback and suggestions for improvement, including:
+ 
+        1. Introduction:
+            Does the problem statement clearly define the research question?
+            Are the basic concepts and past work relevant and explained sufficiently for the intended audience?
+            Suggestions: Recommend adding clarity, adjusting scope, or incorporating more citations if needed.
+        2. Methods:
+            Is the approach well-structured, with a clear explanation of input data, experimental design, and validation methods?
+            Suggestions: Point out if additional details, better flow, or improved descriptions of validation strategies would be helpful.
+        3. Results:
+            Are the findings well-presented with clear, detailed tables and figures? Are captions informative, and is the logic between results and conclusions sound?
+            Suggestions: Highlight if the visuals or narrative need refinement, or if the logic behind the conclusions requires strengthening.
+        4. Discussion:
+            Does the discussion clearly address the limitations, applicability, and potential future work?
+            Suggestions: Suggest if additional focus on limitations or a more detailed proposal for future research would be beneficial.
+        5. Acknowledgements and References:
+            Are all contributors and co-authors credited? Are the references relevant and complete? Are there links to supplemental materials like GitHub or demo videos?
+            Suggestions: Recommend ensuring credit where due and possibly adding or refining resource links.
+        6. Style:
+            Is the paper visually organized with well-separated sections and sparing use of color? Are fonts consistent and appropriate for headings and content?
+            Suggestions: Suggest improvements to layout, color use, or font consistency if needed.
+ 
+        4. Figure Analysis:
+        Analyze each figure in the paper. Describe what the figure shows, its relevance to the research, and any improvements that could be made in terms of clarity, design, or information presentation.
+ 
+        5. Constructive Suggestions:
+        For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the paper.
+        For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
+        For each criterion, provide a harsh and critical review, focusing on weaknesses. Be technical, elaborate, and extremely critical in your assessment.
 
-        End your review with a rating from 1 to 9 (1 being the lowest, 9 being the highest) and a brief summary.
+        End your review for each criterion with a clear numerical rating from 1 to 9 (1 being the lowest, 9 being the highest) in the following format:
+        
+        [Criterion Name] Rating: X/9
+
+        Provide a brief summary for each rating, highlighting the main weaknesses and suggesting concrete details for improvement.
 
         Your review:
         """
