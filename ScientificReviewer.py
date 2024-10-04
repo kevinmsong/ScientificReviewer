@@ -116,7 +116,7 @@ def analyze_poster(text_content, images, agent):
     Here's the text content extracted from the poster:
     {text_content}
 
-    Please provide your analysis, considering both the text content and the figures in the poster:
+    Please provide your analysis, considering both the text content and the figures in the poster:Please provide your analysis, considering both the text content and the figures in the poster:
     """
 
     try:
@@ -180,11 +180,25 @@ def review_proposal(content, agents, expertises, review_type):
         
         {", ".join(criteria)}
 
-        Additional review principles:
-        - Focus on the highest quality and potential to advance or transform knowledge frontiers
-        - Consider broader contributions to societal goals
-        - Assess based on appropriate metrics, considering project size and resources
-
+        Please review the research project proposal thoroughly and provide the following:
+ 
+        1. Summary:
+        Start with a concise summary of the proposal's overall strengths and weaknesses.
+        Highlight key areas where the proposal excels and areas that need significant improvement.
+ 
+        2. Scoring Criteria:
+        Provide an overall score for the proposal as well as a breakdown of scores for each section. Use a 1-9 scale, where:
+        1 is extremely poor,
+        5 is satisfactory, and
+        9 is flawless.
+        Distribute the scores according to a normal distribution, with 5 being the center point.
+ 
+        3. Detailed Evaluation:
+        For each section, provide specific feedback and suggestions for improvement, including:
+ 
+        4. Constructive Suggestions:
+        For each section, offer specific, actionable recommendations on how to improve the content, presentation, or overall quality of the proposal.
+        For each section, please provide constructive feedback and a score (1-9) based on the criteria outlined above.
         For each criterion, provide a harsh and critical review, focusing on weaknesses. Be technical, elaborate, and extremely critical in your assessment.
 
         End your review for each criterion with a clear numerical rating from 1 to 9 (1 being the lowest, 9 being the highest) in the following format:
