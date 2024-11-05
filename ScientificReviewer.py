@@ -454,39 +454,39 @@ def get_default_prompt(review_type: str, expertise: str) -> str:
         prompts = {
             "Paper": f"""As an expert in {expertise}, please review this scientific paper considering:
                 
-            Strengths and Weaknesses
-            
-            1. Scientific Merit and Novelty
-            2. Methodology and Technical Rigor
-            3. Data Analysis and Interpretation
-            4. Clarity and Presentation
-            5. Impact and Significance
-            
-            Please provide scores (1-9) for each aspect and an overall score.""",
+        Strengths and Weaknesses
+        
+        1. Scientific Merit and Novelty
+        2. Methodology and Technical Rigor
+        3. Data Analysis and Interpretation
+        4. Clarity and Presentation
+        5. Impact and Significance
+        
+        Please provide scores (1-9) for each aspect and an overall score.""",
             
             "Grant": f"""As an expert in {expertise}, please evaluate this grant proposal considering:
                 
-            Strengths and Weaknesses
-            
-            1. Innovation and Significance
-            2. Approach and Methodology
-            3. Feasibility and Timeline
-            4. Budget Justification
-            5. Expected Impact
-            
-            Please provide scores (1-9) for each aspect and an overall score.""",
+        Strengths and Weaknesses
+        
+        1. Innovation and Significance
+        2. Approach and Methodology
+        3. Feasibility and Timeline
+        4. Budget Justification
+        5. Expected Impact
+        
+        Please provide scores (1-9) for each aspect and an overall score.""",
             
             "Poster": f"""As an expert in {expertise}, please review this scientific poster considering:
                 
-            Strengths and Weaknesses
-            
-            1. Visual Appeal and Organization
-            2. Scientific Content
-            3. Methodology Presentation
-            4. Results and Conclusions
-            5. Impact and Relevance
-            
-            Please provide scores (1-9) for each aspect and an overall score."""
+        Strengths and Weaknesses
+        
+        1. Visual Appeal and Organization
+        2. Scientific Content
+        3. Methodology Presentation
+        4. Results and Conclusions
+        5. Impact and Relevance
+        
+        Please provide scores (1-9) for each aspect and an overall score."""
         }
         return prompts.get(review_type, f"Please provide a thorough review of this {review_type.lower()}.")
     except Exception as e:
