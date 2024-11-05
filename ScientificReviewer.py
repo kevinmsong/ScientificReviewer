@@ -504,7 +504,7 @@ def scientific_review_page():
             
             st.warning("Please try again or check your inputs.")
 
-def get_default_prompt(review_type: str, expertise: str) -> str:def get_default_prompt(review_type: str, expertise: str) -> str:
+def get_default_prompt(review_type: str, expertise: str) -> str:
     """Get default prompt based on review type."""
     try:
         prompts = {
