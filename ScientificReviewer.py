@@ -19,7 +19,7 @@ client = OpenAI(api_key=api_key)
 def create_review_agents(num_agents: int, review_type: str = "paper", include_moderator: bool = False) -> List[ChatOpenAI]:
     """Create review agents including a moderator if specified."""
     # Select model based on review type
-    model = "gpt-4-turbo" if review_type == "poster" else "gpt-4o"
+    model = "gpt-4o"
     
     # Create regular review agents
     agents = [ChatOpenAI(temperature=0.1, openai_api_key=api_key, model=model) 
