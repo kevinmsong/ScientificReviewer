@@ -18,7 +18,7 @@ client = OpenAI(api_key=api_key)
 def create_review_agents(num_agents: int, review_type: str = "paper", include_moderator: bool = False) -> List[ChatOpenAI]:
     """Create review agents including a moderator if specified."""
     # Select model based on review type
-    model = "gpt-4-turbo" if review_type == "poster" else "gpt-4"
+    model = "gpt-4-turbo" if review_type == "poster" else "gpt-4o"
     
     # Create regular review agents
     agents = [ChatOpenAI(temperature=0.1, openai_api_key=api_key, model=model) 
@@ -27,7 +27,7 @@ def create_review_agents(num_agents: int, review_type: str = "paper", include_mo
     # Add moderator agent if requested and multiple reviewers
     if include_moderator and num_agents > 1:
         moderator_agent = ChatOpenAI(temperature=0.1, openai_api_key=api_key, 
-                                   model="gpt-4")
+                                   model="gpt-4o")
         agents.append(moderator_agent)
     
     return agents
@@ -245,6 +245,7 @@ def get_default_prompt(review_type: str, expertise: str) -> str:
     """Get default prompt based on review type."""
     prompts = {
         "Paper": f"""As an expert in {expertise}, please provide a comprehensive review of this scientific paper considering:
+            
             Strengths and Weaknesses
             
             1. Scientific Merit and Novelty
@@ -258,6 +259,7 @@ def get_default_prompt(review_type: str, expertise: str) -> str:
             Please provide scores (1-9) for each aspect and an overall score.""",
         
         "Grant": f"""As an expert in {expertise}, please evaluate this grant proposal considering:
+            
             Strengths and Weaknesses
             
             1. Innovation and Significance
@@ -271,6 +273,7 @@ def get_default_prompt(review_type: str, expertise: str) -> str:
             Please provide scores (1-9) for each aspect and an overall score.""",
         
         "Poster": f"""As an expert in {expertise}, please review this scientific poster considering:
+            
             Strengths and Weaknesses
             
             1. Visual Appeal and Organization
