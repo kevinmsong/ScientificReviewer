@@ -556,7 +556,7 @@ def main():
     # Model information in sidebar
     st.sidebar.markdown("### Model Information")
     st.sidebar.markdown("- Paper/Grant Review Model: GPT-4o")
-    st.sidebar.markdown("- Paper/Grant Review Model: GTP-4 Turbo")
+    st.sidebar.markdown("- Poster Review Model: GTP-4 Turbo")
     st.sidebar.markdown("- Moderator Model: GPT-4o")
     
     # Additional settings in sidebar
