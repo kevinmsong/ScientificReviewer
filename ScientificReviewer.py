@@ -177,8 +177,35 @@ Please provide a consolidated review addressing all sections of the document."""
 
 def process_reviews_with_debate(content: str, agents: List[ChatOpenAI], expertises: List[str], 
                               custom_prompts: List[str], review_type: str, 
-                              num_iterations: int) -> Dict[str, Any]:
-    """Process reviews with multiple iterations of debate between reviewers."""
+                              num_iterations: int, progress_callback=None) -> Dict[str, Any]:
+    """Process reviews with multiple iterations of debate between reviewers with real-time updates."""
+    # Create containers for real-time display
+    review_containers = {}
+    iteration_containers = []
+    
+    # Initialize containers for each iteration
+    for iteration in range(num_iterations):
+        iteration_header = st.subheader(f"Iteration {iteration + 1}")
+        iteration_container = st.container()
+        iteration_containers.append({
+            "header": iteration_header,
+            "container": iteration_container
+        })
+        
+        # Initialize containers for each reviewer in this iteration
+        for expertise in expertises:
+            if expertise not in review_containers:
+                review_containers[expertise] = []
+            with iteration_container:
+                reviewer_container = st.empty()
+                review_containers[expertise].append(reviewer_container)
+    
+    # Initialize moderator container if needed
+    if len(agents) > len(expertises):
+        moderator_container = st.container()
+        moderator_header = moderator_container.subheader("Moderator Analysis")
+        moderator_content = moderator_container.empty()
+    
     # Chunk the content
     content_chunks = chunk_content(content)
     all_iterations = []
@@ -188,16 +215,32 @@ def process_reviews_with_debate(content: str, agents: List[ChatOpenAI], expertis
     for iteration in range(num_iterations):
         review_results = []
         
+        # Update progress if callback provided
+        if progress_callback:
+            progress = (iteration / num_iterations) * 100
+            progress_callback(progress, f"Processing iteration {iteration + 1}/{num_iterations}")
+        
         # Get reviews from each agent
         for i, (agent, expertise, base_prompt) in enumerate(zip(agents[:-1], expertises, custom_prompts)):
             try:
                 debate_prompt = get_debate_prompt(expertise, iteration + 1, latest_reviews, review_type)
                 full_prompt = f"{base_prompt}\n\n{debate_prompt}"
                 
+                # Show "Generating..." placeholder
+                review_containers[expertise][iteration].markdown("🔄 Generating review...")
+                
                 # Process chunks for this review
                 review_text = process_chunks_with_debate(
                     content_chunks, agent, expertise, full_prompt, iteration + 1
                 )
+                
+                # Update review display in real-time
+                with review_containers[expertise][iteration].container():
+                    st.write(f"Review by {expertise}")
+                    sections = review_text.split('\n\n')
+                    for section in sections:
+                        st.markdown(section.strip())
+                        st.markdown("---")
                 
                 review_result = {
                     "expertise": expertise,
@@ -210,9 +253,12 @@ def process_reviews_with_debate(content: str, agents: List[ChatOpenAI], expertis
                 
             except Exception as e:
                 logging.error(f"Error in review process for {expertise}: {str(e)}")
+                error_message = f"An error occurred while processing review from {expertise}. Error: {str(e)}"
+                review_containers[expertise][iteration].error(error_message)
+                
                 review_results.append({
                     "expertise": expertise,
-                    "review": f"An error occurred while processing review from {expertise}. Error: {str(e)}",
+                    "review": error_message,
                     "iteration": iteration + 1,
                     "success": False
                 })
@@ -224,6 +270,8 @@ def process_reviews_with_debate(content: str, agents: List[ChatOpenAI], expertis
     moderation_result = None
     if len(agents) > len(expertises):
         try:
+            moderator_content.markdown("🔄 Generating moderator analysis...")
+            
             moderator_prompt = """As a senior scientific moderator, analyze the complete review discussion:
 
 """
@@ -264,13 +312,23 @@ Please provide specific examples from the discussion to support your analysis.""
             try:
                 moderator_response = agents[-1].invoke([HumanMessage(content=moderator_prompt)])
                 moderation_result = extract_content(moderator_response, "[Error: Unable to extract moderator response]")
+                
+                # Update moderator analysis in real-time
+                with moderator_content.container():
+                    sections = moderation_result.split('\n\n')
+                    for section in sections:
+                        st.markdown(section.strip())
+                        st.markdown("---")
+                
             except Exception as mod_error:
                 logging.error(f"Moderator API Error: {str(mod_error)}")
                 moderation_result = "Error occurred during moderation. Please try again."
+                moderator_content.error(moderation_result)
             
         except Exception as e:
             logging.error(f"Error in moderation process: {str(e)}")
             moderation_result = f"An error occurred during moderation. Error: {str(e)}"
+            moderator_content.error(moderation_result)
     
     return {
         "all_iterations": all_iterations,
@@ -395,45 +453,45 @@ def scientific_review_page():
     
     if uploaded_file and start_review:
         try:
-            # Show progress
+            # Create a progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # Extract content with progress update
-            status_text.text("Extracting content from PDF...")
+            def update_progress(progress, status):
+                progress_bar.progress(int(progress))
+                status_text.text(status)
+            
+            # Extract content
+            update_progress(10, "Extracting content from PDF...")
             content = extract_pdf_content(uploaded_file)[0]
-            progress_bar.progress(20)
             
-            # Create agents with progress update
-            status_text.text("Initializing review agents...")
+            # Create agents
+            update_progress(20, "Initializing review agents...")
             agents = create_review_agents(num_reviewers, review_type.lower(), use_moderator)
-            progress_bar.progress(40)
             
-            # Validate inputs before processing
+            # Validate inputs
             if not all(expertises) or not all(custom_prompts):
                 st.error("Please ensure all reviewer configurations are complete.")
                 return
-                
-            # Process reviews with progress updates
-            status_text.text("Processing reviews and generating debate...")
+            
+            # Process reviews with real-time updates
+            update_progress(30, "Starting review process...")
             results = process_reviews_with_debate(
                 content=content,
                 agents=agents,
                 expertises=expertises,
                 custom_prompts=custom_prompts,
                 review_type=review_type.lower(),
-                num_iterations=num_iterations
+                num_iterations=num_iterations,
+                progress_callback=update_progress
             )
-            progress_bar.progress(80)
             
-            # Display results with progress update
-            status_text.text("Displaying review results...")
-            display_review_results_with_debate(results)
-            progress_bar.progress(100)
+            update_progress(100, "Review process completed!")
             
             # Clear progress indicators
-            status_text.empty()
+            time.sleep(1)  # Brief pause to show completion
             progress_bar.empty()
+            status_text.empty()
             
             st.success("Review process completed successfully!")
             
@@ -441,14 +499,12 @@ def scientific_review_page():
             st.error(f"An error occurred during the review process: {str(e)}")
             logging.exception("Error in review process:")
             
-            # Provide more detailed error information in debug mode
             if st.sidebar.checkbox("Debug Mode", value=False):
                 st.exception(e)
-                
-            # Offer retry suggestion
+            
             st.warning("Please try again or check your inputs.")
 
-def get_default_prompt(review_type: str, expertise: str) -> str:
+def get_default_prompt(review_type: str, expertise: str) -> str:def get_default_prompt(review_type: str, expertise: str) -> str:
     """Get default prompt based on review type."""
     try:
         prompts = {
