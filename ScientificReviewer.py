@@ -101,31 +101,104 @@ def process_reviews(content: str, agents: List[ChatOpenAI], expertises: List[str
     review_results = []
     
     # Get reviews from each agent
-    for agent, expertise, prompt in zip(agents[:-1], expertises, custom_prompts):
+    for i, (agent, expertise, prompt) in enumerate(zip(agents[:-1], expertises, custom_prompts)):
         try:
-            full_prompt = prompt + f"\n\nContent to review:\n{content}"
-            response = agent.invoke([HumanMessage(content=full_prompt)])
-            review_text = extract_content(response, f"[Error: Unable to extract response for {expertise}]")
+            # Structure the review prompt more explicitly
+            full_prompt = f"""As an expert in {expertise}, please review the following {review_type}.
+
+{prompt}
+
+Here is the content to review:
+
+{content}
+
+Please structure your review with the following sections:
+1. Overview and Summary (2-3 sentences)
+2. Technical Analysis
+3. Methodology Assessment
+4. Strengths
+5. Weaknesses
+6. Suggestions for Improvement
+7. Scores (1-9) for:
+   - Scientific Merit
+   - Technical Rigor
+   - Clarity
+   - Impact
+   - Overall Score
+
+Please be specific and provide justification for your assessments."""
+
+            # Make the API call with proper error handling
+            try:
+                response = agent.invoke([HumanMessage(content=full_prompt)])
+                review_text = extract_content(response, f"[Error: Unable to extract response for {expertise}]")
+            except Exception as api_error:
+                logging.error(f"API Error for {expertise}: {str(api_error)}")
+                review_text = f"API Error occurred while getting review from {expertise}. Please try again."
+            
             review_results.append({
                 "expertise": expertise,
-                "review": review_text
+                "review": review_text,
+                "success": True
             })
+            
         except Exception as e:
-            logging.error(f"Error getting response from {expertise}: {str(e)}")
+            logging.error(f"Error in review process for {expertise}: {str(e)}")
             review_results.append({
                 "expertise": expertise,
-                "review": f"[Error: Issue with review from {expertise}]"
+                "review": f"An error occurred while processing review from {expertise}. Error: {str(e)}",
+                "success": False
             })
     
     # If we have multiple reviews and a moderator agent, get moderation
     if len(review_results) > 1 and len(agents) > len(expertises):
         try:
-            moderator_prompt = get_moderator_prompt(review_results, review_type)
-            moderator_response = agents[-1].invoke([HumanMessage(content=moderator_prompt)])
-            moderation_result = extract_content(moderator_response, "[Error: Unable to extract moderator response]")
+            # Enhanced moderator prompt with better structure
+            moderator_prompt = """As a senior scientific moderator, please analyze the following reviews:
+
+"""
+            # Add only successful reviews to the moderator's analysis
+            successful_reviews = [r for r in review_results if r.get("success", False)]
+            
+            for idx, review in enumerate(successful_reviews, 1):
+                moderator_prompt += f"\nREVIEW {idx} (by {review['expertise']}):\n{review['review']}\n"
+            
+            moderator_prompt += """
+Please provide your analysis in the following structured format:
+
+1. REVIEW ANALYSIS
+For each review, assess:
+- Scientific rigor and methodology
+- Objectivity and evidence-based reasoning
+- Key valid points and insights
+- Any potential biases or limitations
+
+2. SYNTHESIS OF KEY POINTS
+- Areas of consensus
+- Important disagreements
+- Most substantiated criticisms
+- Most valuable suggestions
+
+3. FINAL ASSESSMENT
+- Overall score (1-9): [Score]
+- Key strengths: [List 3-5 main strengths]
+- Key weaknesses: [List 3-5 main weaknesses]
+- Priority improvements: [List 3-5 main suggestions]
+- Final recommendation: [Accept/Major Revision/Minor Revision/Reject]
+
+Please be specific and provide justification for your assessments."""
+
+            # Make the API call for moderation
+            try:
+                moderator_response = agents[-1].invoke([HumanMessage(content=moderator_prompt)])
+                moderation_result = extract_content(moderator_response, "[Error: Unable to extract moderator response]")
+            except Exception as mod_error:
+                logging.error(f"Moderator API Error: {str(mod_error)}")
+                moderation_result = "Error occurred during moderation. Please try again."
+            
         except Exception as e:
-            logging.error(f"Error getting moderator response: {str(e)}")
-            moderation_result = "[Error: Issue with moderation]"
+            logging.error(f"Error in moderation process: {str(e)}")
+            moderation_result = f"An error occurred during moderation. Error: {str(e)}"
     else:
         moderation_result = None
     
@@ -135,45 +208,78 @@ def process_reviews(content: str, agents: List[ChatOpenAI], expertises: List[str
     }
 
 def display_review_results(results: Dict[str, Any]) -> None:
-    """Display review results in Streamlit."""
-    # Display individual reviews
-    st.subheader("Individual Reviews")
-    for review in results["individual_reviews"]:
-        with st.expander(f"Review by {review['expertise']}"):
-            st.write(review["review"])
+    """Display review results in Streamlit with enhanced error handling."""
+    try:
+        # Display individual reviews with better formatting
+        st.subheader("Individual Reviews")
+        for review in results["individual_reviews"]:
+            with st.expander(f"Review by {review['expertise']}", expanded=True):
+                if review.get("success", False):
+                    # Split the review into sections for better readability
+                    sections = review['review'].split('\n\n')
+                    for section in sections:
+                        st.write(section.strip())
+                        st.markdown("---")
+                else:
+                    st.error(review['review'])
+        
+        # Display moderation if available
+        if results["moderation"]:
+            st.subheader("Moderator Analysis")
+            
+            # Check if moderation was successful
+            if not results["moderation"].startswith("[Error"):
+                # Split moderator analysis into sections for better readability
+                sections = results["moderation"].split('\n\n')
+                for section in sections:
+                    st.write(section.strip())
+                    st.markdown("---")
+            else:
+                st.error(results["moderation"])
     
-    # Display moderation if available
-    if results["moderation"]:
-        st.subheader("Moderator Analysis")
-        st.write(results["moderation"])
+    except Exception as e:
+        st.error(f"Error displaying results: {str(e)}")
+        logging.exception("Error in display_review_results:")
 
 def get_default_prompt(review_type: str, expertise: str) -> str:
     """Get default prompt based on review type."""
     prompts = {
         "Paper": f"""As an expert in {expertise}, please provide a comprehensive review of this scientific paper considering:
+            Strengths and Weaknesses
+            
             1. Scientific Merit and Novelty
             2. Methodology and Technical Rigor
             3. Data Analysis and Interpretation
             4. Clarity and Presentation
             5. Impact and Significance
             
+            Suggestions for Improvement
+            
             Please provide scores (1-9) for each aspect and an overall score.""",
         
         "Grant": f"""As an expert in {expertise}, please evaluate this grant proposal considering:
+            Strengths and Weaknesses
+            
             1. Innovation and Significance
             2. Approach and Methodology
             3. Feasibility and Timeline
             4. Budget Justification
             5. Expected Impact
+
+            Suggestions for Improvement
             
             Please provide scores (1-9) for each aspect and an overall score.""",
         
         "Poster": f"""As an expert in {expertise}, please review this scientific poster considering:
+            Strengths and Weaknesses
+            
             1. Visual Appeal and Organization
             2. Scientific Content
             3. Methodology Presentation
             4. Results and Conclusions
             5. Impact and Relevance
+
+            Suggestions for Improvement
             
             Please provide scores (1-9) for each aspect and an overall score."""
     }
@@ -192,7 +298,7 @@ def scientific_review_page():
     num_reviewers = st.number_input(
         "Number of Reviewers",
         min_value=1,
-        max_value=5,
+        max_value=10,
         value=2
     )
     
