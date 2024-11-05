@@ -550,8 +550,6 @@ def main():
         </style>
         """, unsafe_allow_html=True)
     
-    st.title("Multi-Agent Scientific Review System")
-    
     # Add version number and info to sidebar
     st.sidebar.text("Version 2.0.0")
     
