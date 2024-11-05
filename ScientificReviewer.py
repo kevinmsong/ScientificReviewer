@@ -9,6 +9,7 @@ from PIL import Image
 import base64
 from typing import List, Dict, Any, Tuple, Union
 import tiktoken
+import time
 
 logging.basicConfig(level=logging.INFO)
 
