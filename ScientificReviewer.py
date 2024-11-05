@@ -308,49 +308,14 @@ def display_review_results_with_debate(results: Dict[str, Any]) -> None:
         st.error(f"Error displaying results: {str(e)}")
         logging.exception("Error in display_review_results_with_debate:")
 
-def get_default_prompt(review_type: str, expertise: str) -> str:
-    """Get default prompt based on review type."""
-    prompts = {
-        "Paper": f"""As an expert in {expertise}, please provide a comprehensive review considering:
-            
-            Strengths and Weaknesses
-            
-            1. Scientific Merit and Novelty
-            2. Methodology and Technical Rigor
-            3. Data Analysis and Interpretation
-            4. Clarity and Presentation
-            5. Impact and Significance
-            
-            Please provide scores (1-9) for each aspect and an overall score.""",
-        
-        "Grant": f"""As an expert in {expertise}, please evaluate considering:
-            
-            Strengths and Weaknesses
-            
-            1. Innovation and Significance
-            2. Approach and Methodology
-            3. Feasibility and Timeline
-            4. Budget Justification
-            5. Expected Impact
-            
-            Please provide scores (1-9) for each aspect and an overall score.""",
-        
-        "Poster": f"""As an expert in {expertise}, please review considering:
-            
-            Strengths and Weaknesses
-            
-            1. Visual Appeal and Organization
-            2. Scientific Content
-            3. Methodology Presentation
-            4. Results and Conclusions
-            5. Impact and Relevance
-            
-            Please provide scores (1-9) for each aspect and an overall score."""
-    }
-    return prompts.get(review_type, "Please provide a thorough review of this submission.")
-
 def scientific_review_page():
     st.header("Multi-Agent Scientific Review System")
+    
+    # Add session state for storing reviewer configurations
+    if 'expertises' not in st.session_state:
+        st.session_state.expertises = []
+    if 'custom_prompts' not in st.session_state:
+        st.session_state.custom_prompts = []
     
     # Review type selection
     review_type = st.selectbox(
@@ -358,27 +323,33 @@ def scientific_review_page():
         ["Paper", "Grant", "Poster"]
     )
     
-    # Number of reviewers
+    # Number of reviewers with validation
     num_reviewers = st.number_input(
         "Number of Reviewers",
         min_value=1,
         max_value=10,
-        value=2
+        value=2,
+        key="num_reviewers"
     )
     
-    # Number of iterations
+    # Number of iterations with validation
     num_iterations = st.number_input(
         "Number of Discussion Iterations",
         min_value=1,
         max_value=10,
         value=2,
-        help="Number of rounds of discussion between reviewers"
+        help="Number of rounds of discussion between reviewers",
+        key="num_iterations"
     )
     
     # Option for moderator when multiple reviewers
     use_moderator = False
     if num_reviewers > 1:
-        use_moderator = st.checkbox("Include Moderator/Judge Review", value=True)
+        use_moderator = st.checkbox(
+            "Include Moderator/Judge Review", 
+            value=True,
+            key="use_moderator"
+        )
     
     # Collect expertise and custom prompts for each reviewer
     expertises = []
@@ -387,42 +358,140 @@ def scientific_review_page():
     with st.expander("Configure Reviewers"):
         for i in range(num_reviewers):
             col1, col2 = st.columns(2)
+            
+            # Expertise input with unique key
             with col1:
-                expertise = st.text_input(f"Expertise for Reviewer {i+1}", 
-                                        value=f"Scientific Expert {i+1}")
+                expertise = st.text_input(
+                    f"Expertise for Reviewer {i+1}", 
+                    value=f"Scientific Expert {i+1}",
+                    key=f"expertise_{i}"
+                )
                 expertises.append(expertise)
             
+            # Custom prompt input with unique key
             with col2:
                 default_prompt = get_default_prompt(review_type, expertise)
-                prompt = st.text_area(prompt = st.text_area(
+                prompt = st.text_area(
                     f"Custom Prompt for Reviewer {i+1}",
                     value=default_prompt,
-                    height=200
+                    height=200,
+                    key=f"prompt_{i}"
                 )
                 custom_prompts.append(prompt)
     
-    # File upload
-    uploaded_file = st.file_uploader(f"Upload {review_type} (PDF)", type=["pdf"])
+    # File upload with validation
+    uploaded_file = st.file_uploader(
+        f"Upload {review_type} (PDF)",
+        type=["pdf"],
+        key="uploaded_file"
+    )
     
-    if uploaded_file and st.button("Start Review"):
+    # Start review button with validation
+    start_review = st.button(
+        "Start Review",
+        disabled=not uploaded_file,  # Disable if no file uploaded
+        key="start_review"
+    )
+    
+    if uploaded_file and start_review:
         try:
-            st.write("Starting review process...")
+            # Show progress
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             
+            # Extract content with progress update
+            status_text.text("Extracting content from PDF...")
             content = extract_pdf_content(uploaded_file)[0]
+            progress_bar.progress(20)
+            
+            # Create agents with progress update
+            status_text.text("Initializing review agents...")
             agents = create_review_agents(num_reviewers, review_type.lower(), use_moderator)
+            progress_bar.progress(40)
             
+            # Validate inputs before processing
+            if not all(expertises) or not all(custom_prompts):
+                st.error("Please ensure all reviewer configurations are complete.")
+                return
+                
+            # Process reviews with progress updates
+            status_text.text("Processing reviews and generating debate...")
             results = process_reviews_with_debate(
-                content, agents, expertises, custom_prompts, 
-                review_type.lower(), num_iterations
+                content=content,
+                agents=agents,
+                expertises=expertises,
+                custom_prompts=custom_prompts,
+                review_type=review_type.lower(),
+                num_iterations=num_iterations
             )
+            progress_bar.progress(80)
             
+            # Display results with progress update
+            status_text.text("Displaying review results...")
             display_review_results_with_debate(results)
+            progress_bar.progress(100)
             
-            st.write("Review process completed.")
+            # Clear progress indicators
+            status_text.empty()
+            progress_bar.empty()
+            
+            st.success("Review process completed successfully!")
             
         except Exception as e:
             st.error(f"An error occurred during the review process: {str(e)}")
             logging.exception("Error in review process:")
+            
+            # Provide more detailed error information in debug mode
+            if st.sidebar.checkbox("Debug Mode", value=False):
+                st.exception(e)
+                
+            # Offer retry suggestion
+            st.warning("Please try again or check your inputs.")
+
+def get_default_prompt(review_type: str, expertise: str) -> str:
+    """Get default prompt based on review type."""
+    try:
+        prompts = {
+            "Paper": f"""As an expert in {expertise}, please review this scientific paper considering:
+                
+                Strengths and Weaknesses
+                
+                1. Scientific Merit and Novelty
+                2. Methodology and Technical Rigor
+                3. Data Analysis and Interpretation
+                4. Clarity and Presentation
+                5. Impact and Significance
+                
+                Please provide scores (1-9) for each aspect and an overall score.""",
+            
+            "Grant": f"""As an expert in {expertise}, please evaluate this grant proposal considering:
+                
+                Strengths and Weaknesses
+                
+                1. Innovation and Significance
+                2. Approach and Methodology
+                3. Feasibility and Timeline
+                4. Budget Justification
+                5. Expected Impact
+                
+                Please provide scores (1-9) for each aspect and an overall score.""",
+            
+            "Poster": f"""As an expert in {expertise}, please review this scientific poster considering:
+                
+                Strengths and Weaknesses
+                
+                1. Visual Appeal and Organization
+                2. Scientific Content
+                3. Methodology Presentation
+                4. Results and Conclusions
+                5. Impact and Relevance
+                
+                Please provide scores (1-9) for each aspect and an overall score."""
+        }
+        return prompts.get(review_type, f"Please provide a thorough review of this {review_type.lower()}.")
+    except Exception as e:
+        logging.error(f"Error generating default prompt: {str(e)}")
+        return "Please provide a thorough review of this submission."
 
 def main():
     st.set_page_config(
