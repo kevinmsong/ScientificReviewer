@@ -587,7 +587,7 @@ def main():
     with st.sidebar.expander("Instructions"):
         st.markdown("""
         1. Select review type (Paper/Grant/Poster)
-        2. Set number of reviewers (1-5)
+        2. Set number of reviewers (1-10)
         3. Choose number of discussion iterations
         4. Configure reviewer expertise and prompts
         5. Upload document (PDF)
