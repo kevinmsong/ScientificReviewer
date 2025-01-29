@@ -3,7 +3,7 @@ openai
 langchain-openai
 langchain-core
 PyMuPDF
-PillowPillow
+Pillow
 tiktoken
 google-generativeai
 python-dotenv
