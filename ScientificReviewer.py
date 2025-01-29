@@ -131,19 +131,24 @@ def get_score_description(rating_scale: str, score: float) -> str:
         }
     }
     
-    # Round the score to the nearest integer for lookup
-    rounded_score = round(score)
+    # Get the mapping for the selected rating scale
+    scale_mapping = descriptions.get(rating_scale, {})
     
-    # If the exact score isn't in descriptions, find the closest match
-    if rounded_score not in descriptions.get(rating_scale, {}):
-        scale_scores = list(descriptions.get(rating_scale, {}).keys())
-        if scale_scores:
-            rounded_score = min(scale_scores, key=lambda x: abs(x - rounded_score))
+    # Round the score based on the scale
+    if rating_scale == "Paper Score (-2 to 2)":
+        rounded_score = round(score)
+    elif rating_scale == "Star Rating (1-5)":
+        rounded_score = min(max(round(score), 1), 5)
+    elif rating_scale == "NIH Scale (1-9)":
+        # NIH Scale goes 1, 3, 5, 7, 9
+        scale_values = [1, 3, 5, 7, 9]
+        rounded_score = min(scale_values, key=lambda x: abs(x - score))
     
-    return descriptions.get(rating_scale, {}).get(rounded_score, f"Score {score}")
+    # Return description or fallback
+    return scale_mapping.get(rounded_score, f"Score {score}")
 
-def get_debate_prompt(expertise: str, iteration: int, previous_reviews: List[Dict[str, str]], topic: str) -> str:
-    """Generate a debate-style prompt for reviewers."""
+def get_debate_prompt(expertise: str, iteration: int, previous_reviews: List[Dict[str, str]], topic: str, rating_scale: str) -> str:
+    """Generate a debate-style prompt for reviewers with dynamic scoring."""
     prompt = f"""As an expert in {expertise}, you are participating in iteration {iteration} of a scientific review discussion.
 
 Previous reviews and comments to consider:
@@ -152,6 +157,13 @@ Previous reviews and comments to consider:
     for prev_review in previous_reviews:
         prompt += f"\nReview by {prev_review['expertise']}:\n{prev_review['review']}\n"
         
+    # Dynamic scoring instructions based on rating scale
+    scoring_instructions = {
+        "Paper Score (-2 to 2)": "Provide a score from -2 (worst) to 2 (best), with -2 being fundamentally flawed and 2 being exceptional.",
+        "Star Rating (1-5)": "Provide a star rating from 1 (poor) to 5 (excellent), with 3 being average.",
+        "NIH Scale (1-9)": "Provide a score from 1 (exceptional) to 9 (poor), with 5 being competitive."
+    }
+    
     if iteration == 1:
         prompt += f"""
 Please provide your initial review of this {topic} with:
@@ -161,7 +173,7 @@ Please provide your initial review of this {topic} with:
 4. Strengths
 5. Weaknesses
 6. Suggestions for Improvement
-7. Scores (1-9)
+7. Scores: {scoring_instructions[rating_scale]}
 """
     else:
         prompt += f"""
@@ -170,7 +182,7 @@ Based on the previous reviews, please:
 2. Defend or revise your previous assessments
 3. Identify areas of agreement and disagreement
 4. Provide additional insights or counterpoints
-5. Update your scores if necessary
+5. Update your scores: {scoring_instructions[rating_scale]}
 """
     return prompt
 
@@ -266,7 +278,14 @@ def process_reviews_with_debate(content: str, agents: List[Union[ChatOpenAI, Any
                     processing_msg = st.empty()
                     processing_msg.info(f"Processing review from {expertise['name']}...")
                     try:
-                        debate_prompt = get_debate_prompt(expertise['name'], iteration + 1, latest_reviews, review_type)
+                        debate_prompt = get_debate_prompt(
+                            expertise['name'], 
+                            iteration + 1, 
+                            latest_reviews, 
+                            review_type, 
+                            rating_scale  # Add this parameter
+                        )
+                        
                         full_prompt = f"{base_prompt}\n\n{debate_prompt}"
                         
                         review_text = process_chunks_with_debate(
@@ -345,7 +364,10 @@ def process_reviews_with_debate(content: str, agents: List[Union[ChatOpenAI, Any
         if scores:
             avg_score = sum(scores) / len(scores)
             st.metric("Average Score", f"{avg_score:.2f}")
-            st.write(f"Description: {get_score_description(rating_scale, round(avg_score))}")
+            
+            # Use the selected rating scale for description
+            description = get_score_description(rating_scale, avg_score)
+            st.write(f"Description: {description}")
         
         # Moderator analysis (if moderator is used)
         if len(agents) > len(expertises):
