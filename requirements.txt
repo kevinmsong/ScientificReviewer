@@ -1,10 +1,9 @@
 streamlit
 openai
-langchain
-PyPDF2
-Pillow
-python-dotenv
-aiohttp
-langchain_openai
-pdf2image
+langchain-openai
+langchain-core
 PyMuPDF
+PillowPillow
+tiktoken
+google-generativeai
+python-dotenv
