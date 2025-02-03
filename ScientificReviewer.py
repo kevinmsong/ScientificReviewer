@@ -287,7 +287,7 @@ def scientific_review_page():
             ["Paper Score (-2 to 2)", "Star Rating (1-5)", "NIH Scale (1-9)"],
             help="Paper: -2 (worst) to 2 (best)\nStar: 1-5 stars\nNIH: 1 (best) to 9 (worst)"
         )
-        st.session_state['rating_scale'] = rating_scale
+        st.session_state['rating_scale'] = rating_scalefrom reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     
     review_type = st.selectbox("Select Review Type", ["Paper", "Grant", "Poster"])
     col3, col4 = st.columns(2)
