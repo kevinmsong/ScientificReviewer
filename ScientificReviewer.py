@@ -11,6 +11,11 @@ from typing import List, Dict, Any, Tuple, Union
 import tiktoken
 import google.generativeai as genai
 import re
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import io
 
 logging.basicConfig(level=logging.INFO)
 
@@ -43,13 +48,11 @@ def get_score_description(rating_scale: str, score: float) -> str:
 
 def create_memoryless_agents(expertises: List[Dict], include_moderator: bool = False) -> List[Union[ChatOpenAI, Any]]:
     agents = []
-    
-    # Adjust temperature based on critique style
     for expertise in expertises:
         if expertise["model"] == "GPT-4o":
-            # Increase temperature slightly for more lenient styles
+            # Adjust temperature based on critique style
             temp = 0.1 + (expertise.get("style", 0) * 0.1)
-            temp = max(0.1, min(0.7, temp))  # Keep temperature in reasonable bounds
+            temp = max(0.1, min(0.7, temp))
             agent = ChatOpenAI(temperature=temp, openai_api_key=st.secrets["openai_api_key"], model="gpt-4o")
         else:
             genai.configure(api_key=st.secrets["gemini_api_key"])
@@ -139,47 +142,176 @@ def get_default_prompt(review_type: str, expertise: str) -> str:
     }
     return prompts.get(review_type, f"Review this {review_type.lower()}")
 
-def process_review_memoryless(content: str, agents: List[Union[ChatOpenAI, Any]], expertises: List[Dict], custom_prompts: List[str]) -> Dict[str, Any]:
-    review_results = []
-    scores = []
+def generate_pdf_summary(all_reviews: List[List[Dict]], scores: List[float]) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = []
     
-    for i, (agent, expertise, prompt) in enumerate(zip(agents, expertises, custom_prompts)):
-        st.write(f"Processing review from {expertise['name']}...")
-        try:
-            review_text = process_chunk_memoryless(content, agent, expertise['name'], prompt, expertise['model'])
-            review_results.append({
-                "expertise": expertise,
-                "review": review_text,
-                "success": True
-            })
-            
-            score_matches = re.findall(r'score[:\s]*(-?\d+\.?\d*)', review_text.lower())
-            if score_matches:
-                try:
-                    scores.append(float(score_matches[0]))
-                except ValueError:
-                    pass
-                    
-            with st.expander(f"Review by {expertise['name']} ({expertise['model']})", expanded=True):
-                st.markdown(review_text)
-                col1, col2 = st.columns([1,2])
-                with col1:
-                    st.caption(f"Critique Style: {expertise['style']}")
-                
-        except Exception as e:
-            logging.error(f"Error processing agent {expertise['name']}: {str(e)}")
-            review_results.append({
-                "expertise": expertise,
-                "review": f"Error: {str(e)}",
-                "success": False
-            })
+    # Title
+    story.append(Paragraph("Scientific Review Summary", styles['Title']))
+    story.append(Spacer(1, 12))
+    
+    # Score Summary
+    if scores:
+        avg_score = sum(scores) / len(scores)
+        story.append(Paragraph(f"Overall Score: {avg_score:.2f}", styles['Heading1']))
+        description = get_score_description(st.session_state.get('rating_scale', 'Paper Score (-2 to 2)'), avg_score)
+        story.append(Paragraph(f"Assessment: {description}", styles['Normal']))
+        story.append(Spacer(1, 12))
+    
+    # Reviews
+    for iteration_idx, iteration in enumerate(all_reviews, 1):
+        story.append(Paragraph(f"Iteration {iteration_idx}", styles['Heading1']))
+        for review in iteration:
+            if review["success"]:
+                story.append(Paragraph(f"Review by {review['expertise']['name']}", styles['Heading2']))
+                story.append(Paragraph(f"Model: {review['expertise']['model']}", styles['Normal']))
+                story.append(Paragraph(f"Style: {review['expertise']['style']}", styles['Normal']))
+                story.append(Paragraph(review['review'], styles['Normal']))
+                story.append(Spacer(1, 12))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+def generate_review_summary(all_reviews: List[List[Dict]], scores: List[float]) -> str:
+    summary = "# Scientific Review Summary\n\n"
     
     if scores:
-        st.subheader("Score Summary")
         avg_score = sum(scores) / len(scores)
-        st.metric("Average Score", f"{avg_score:.2f}")
+        summary += f"## Overall Score: {avg_score:.2f}\n\n"
         description = get_score_description(st.session_state.get('rating_scale', 'Paper Score (-2 to 2)'), avg_score)
-        st.write(f"Description: {description}")
+        summary += f"Assessment: {description}\n\n"
+    
+    for iteration_idx, iteration in enumerate(all_reviews, 1):
+        summary += f"## Iteration {iteration_idx}\n\n"
+        for review in iteration:
+            if review["success"]:
+                summary += f"### Review by {review['expertise']['name']}\n"
+                summary += f"Model: {review['expertise']['model']}\n"
+                summary += f"Style: {review['expertise']['style']}\n\n"
+                summary += f"{review['review']}\n\n"
+    
+    return summary
+
+def process_review_memoryless(content: str, agents: List[Union[ChatOpenAI, Any]], expertises: List[Dict], 
+                            custom_prompts: List[str], num_iterations: int = 1) -> Dict[str, Any]:
+    review_results = []
+    scores = []
+    all_reviews = []
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    tabs = st.tabs([f"Iteration {i+1}" for i in range(num_iterations)] + ["Moderator Summary"])
+    
+    total_steps = num_iterations * len(agents)
+    current_step = 0
+    
+    for iteration in range(num_iterations):
+        iteration_reviews = []
+        with tabs[iteration]:
+            st.write(f"Starting iteration {iteration + 1}")
+            for i, (agent, expertise, prompt) in enumerate(zip(agents, expertises, custom_prompts)):
+                status_text.text(f"Processing review from {expertise['name']} (Iteration {iteration + 1})")
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+                
+                try:
+                    review_text = process_chunk_memoryless(content, agent, expertise['name'], prompt, expertise['model'])
+                    review_data = {
+                        "expertise": expertise,
+                        "review": review_text,
+                        "success": True,
+                        "iteration": iteration + 1
+                    }
+                    review_results.append(review_data)
+                    iteration_reviews.append(review_data)
+                    
+                    score_matches = re.findall(r'score[:\s]*(-?\d+\.?\d*)', review_text.lower())
+                    if score_matches:
+                        try:
+                            scores.append(float(score_matches[0]))
+                        except ValueError:
+                            pass
+                            
+                    with st.expander(f"Review by {expertise['name']} ({expertise['model']})", expanded=True):
+                        st.markdown(review_text)
+                        col1, col2 = st.columns([1,2])
+                        with col1:
+                            st.caption(f"Critique Style: {expertise['style']}")
+                            
+                except Exception as e:
+                    logging.error(f"Error processing agent {expertise['name']}: {str(e)}")
+                    review_results.append({
+                        "expertise": expertise,
+                        "review": f"Error: {str(e)}",
+                        "success": False,
+                        "iteration": iteration + 1
+                    })
+        
+        all_reviews.append(iteration_reviews)
+
+    status_text.empty()
+    progress_bar.empty()
+    
+    if review_results:
+        summary_md = generate_review_summary(all_reviews, scores)
+        
+        # Add moderator summary tab
+        with tabs[-1]:
+            st.subheader("Review Summary")
+            if scores:
+                avg_score = sum(scores) / len(scores)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Average Score", f"{avg_score:.2f}")
+                with col2:
+                    st.write("Assessment:", get_score_description(st.session_state.get('rating_scale', 'Paper Score (-2 to 2)'), avg_score))
+            
+            # Show iteration summaries
+            for i, iteration in enumerate(all_reviews, 1):
+                with st.expander(f"Iteration {i} Summary", expanded=True):
+                    for review in iteration:
+                        if review["success"]:
+                            st.markdown(f"**Review by {review['expertise']['name']}**")
+                            st.markdown(review['review'])
+            
+            # Moderator analysis
+            if use_moderator and len(agents) > len(expertises):
+                st.subheader("Moderator Analysis")
+                try:
+                    moderator_agent = agents[-1]
+                    moderator_prompt = f"""As a scientific moderator, analyze the reviews and provide a comprehensive analysis:
+
+Reviews across {num_iterations} iterations:
+{generate_moderator_prompt(all_reviews)}
+
+Please provide:
+1. Discussion Evolution
+2. Review Quality Assessment
+3. Key Points Synthesis
+4. Final Recommendation with Score Justification"""
+
+                    if expertises[0]['model'] == "GPT-4o":
+                        moderator_response = moderator_agent.invoke([HumanMessage(content=moderator_prompt)])
+                        moderator_analysis = moderator_response.content
+                    else:
+                        moderator_response = moderator_agent.generate_content(moderator_prompt)
+                        moderator_analysis = moderator_response.text
+
+                    st.markdown(moderator_analysis)
+                except Exception as e:
+                    st.error(f"Error in moderator analysis: {str(e)}")
+
+            # Download button
+            pdf_bytes = generate_pdf_summary(all_reviews, scores)
+            st.download_button(
+                label="Download Complete Review Summary (PDF)",
+                data=pdf_bytes,
+                file_name="review_summary.pdf",
+                mime="application/pdf",
+            )
     
     return {"reviews": review_results, "success": True}
 
@@ -190,20 +322,20 @@ def scientific_review_page():
     
     col1, col2 = st.columns([2,1])
     with col1:
-        try:
-            rating_scale = st.radio(
+        rating_scale = st.radio(
             "Rating Scale",
             ["Paper Score (-2 to 2)", "Star Rating (1-5)", "NIH Scale (1-9)"],
             help="Paper: -2 (worst) to 2 (best)\nStar: 1-5 stars\nNIH: 1 (best) to 9 (worst)"
         )
-            st.session_state['rating_scale'] = rating_scale
-        except Exception as e:
-            st.error("Error setting up rating scale")
-            logging.error(f"Rating scale error: {str(e)}")
-            return
-
+        st.session_state['rating_scale'] = rating_scale
+    
     review_type = st.selectbox("Select Review Type", ["Paper", "Grant", "Poster"])
-    num_reviewers = st.number_input("Number of Reviewers", 1, 10, 2)
+    col3, col4 = st.columns(2)
+    with col3:
+        num_reviewers = st.number_input("Number of Reviewers", 1, 10, 2)
+    with col4:
+        num_iterations = st.number_input("Number of Discussion Iterations", 1, 5, 1, help="Number of review rounds")
+    
     use_moderator = st.checkbox("Include Moderator", value=True) if num_reviewers > 1 else False
     
     expertises = []
@@ -240,7 +372,15 @@ def scientific_review_page():
     if uploaded_file and st.button("Start Review"):
         content, _ = extract_pdf_content(uploaded_file)
         agents = create_memoryless_agents(expertises, use_moderator)
-        process_review_memoryless(content, agents, expertises, custom_prompts)
+        process_review_memoryless(
+            content=content,
+            agents=agents,
+            expertises=expertises,
+            custom_prompts=custom_prompts,
+            num_iterations=num_iterations,
+            use_moderator=use_moderator
+        )
 
 if __name__ == "__main__":
     scientific_review_page()
+    
